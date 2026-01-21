@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>RL Overlay</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1920px;height:1080px;overflow:hidden;background:transparent;font-family:'Segoe UI',system-ui,sans-serif;color:#fff;position:relative}
+#topBar{position:absolute;top:30px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:20px;background:rgba(10,10,15,.85);backdrop-filter:blur(15px);padding:15px 25px;border-radius:12px;border:1px solid rgba(255,255,255,.1)}
+.team-section{display:flex;align-items:center;gap:12px;min-width:200px}
+.team-name{font-size:24px;font-weight:900;letter-spacing:1px}
+.team-score{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums}
+.center-info{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:150px}
+.game-time{font-size:28px;font-weight:900;font-variant-numeric:tabular-nums}
+.game-time.overtime{color:#E74C3C}
+.event-name{font-size:11px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:2px}
+.series-dots{display:flex;gap:6px}
+.series-dot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.2)}
+#playerRoster{position:absolute;bottom:30px;left:30px;right:30px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.roster-column{display:flex;flex-direction:column;gap:10px}
+.player-card{background:rgba(10,10,15,.85);backdrop-filter:blur(15px);border-radius:10px;padding:12px 16px;display:grid;grid-template-columns:1fr auto auto;gap:15px;align-items:center;border:1px solid rgba(255,255,255,.1)}
+.player-name{font-size:18px;font-weight:700}
+.player-stats{display:flex;gap:10px;font-size:13px;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.7)}
+.stat-item{display:flex;flex-direction:column;align-items:center;gap:2px}
+.stat-label{font-size:10px;color:rgba(255,255,255,.5)}
+.stat-value{font-weight:700;color:#fff}
+.boost-container{width:120px}
+.boost-bar{height:12px;background:rgba(255,255,255,.15);border-radius:6px;overflow:hidden;position:relative}
+.boost-fill{height:100%;background:linear-gradient(90deg,#F39C12,#F1C40F);transition:width .2s ease;border-radius:6px}
+.boost-text{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:900;color:rgba(0,0,0,.8)}
+#statusBar{position:absolute;bottom:20px;left:20px;background:rgba(10,10,15,.9);padding:10px 15px;border-radius:6px;font-size:12px;max-width:500px}
+.status-connected{color:#2ECC71}
+.status-error{color:#E74C3C}
+.status-warning{color:#F39C12}
+.loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.loading h1{font-size:48px;margin-bottom:20px}
+.spinner{border:4px solid rgba(255,255,255,.1);border-top:4px solid #667eea;border-radius:50%;width:60px;height:60px;animation:spin 1s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="loading" class="loading">
+<h1>🎮 Chargement de l'overlay...</h1>
+<div class="spinner"></div>
+</div>
+<div id="overlay" style="display:none">
+<div id="topBar">
+<div class="team-section blue-team">
+<div class="series-dots" id="blueSeriesDots"></div>
+<span class="team-name" id="blueTeamName">TEAM BLUE</span>
+<span class="team-score" id="blueScore">0</span>
+</div>
+<div class="center-info">
+<div class="event-name" id="eventName">EVENT</div>
+<div class="game-time" id="gameTime">5:00</div>
+</div>
+<div class="team-section orange-team">
+<span class="team-score" id="orangeScore">0</span>
+<span class="team-name" id="orangeTeamName">TEAM ORANGE</span>
+<div class="series-dots" id="orangeSeriesDots"></div>
+</div>
+</div>
+<div id="playerRoster">
+<div class="roster-column" id="blueRoster"></div>
+<div class="roster-column" id="orangeRoster"></div>
+</div>
+<div id="statusBar">
+<span id="statusText">Initialisation...</span>
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL='https://vxwahcquiueympgpciqo.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ4d2FoY3F1aXVleW1wZ3BjaXFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMTQ0MTIsImV4cCI6MjA4NDU5MDQxMn0.ussT6yt_Qcc6Ft0a4wHNR_VFnHspg7EpLiD3SmkWv80';
+const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+
+let ws=null,reconnectTimer=null,currentConfig=null,configUpdateInterval=null;
+const el={
+  loading:document.getElementById('loading'),
+  overlay:document.getElementById('overlay'),
+  blueScore:document.getElementById('blueScore'),
+  orangeScore:document.getElementById('orangeScore'),
+  gameTime:document.getElementById('gameTime'),
+  blueTeamName:document.getElementById('blueTeamName'),
+  orangeTeamName:document.getElementById('orangeTeamName'),
+  eventName:document.getElementById('eventName'),
+  blueRoster:document.getElementById('blueRoster'),
+  orangeRoster:document.getElementById('orangeRoster'),
+  statusText:document.getElementById('statusText'),
+  blueSeriesDots:document.getElementById('blueSeriesDots'),
+  orangeSeriesDots:document.getElementById('orangeSeriesDots')
+};
+
+function getEventId(){
+  const params=new URLSearchParams(window.location.search);
+  return params.get('event');
+}
+
+async function loadConfig(){
+  const eventId=getEventId();
+  if(!eventId){
+    showError('❌ Aucun ID d\'événement dans l\'URL. Contactez l\'admin.');
+    return;
+  }
+  
+  try{
+    const{data,error}=await supabase
+      .from('event_configs')
+      .select('*')
+      .eq('event_id',eventId)
+      .single();
+    
+    if(error)throw error;
+    if(!data){
+      showError('❌ Événement introuvable. Vérifiez l\'URL.');
+      return;
+    }
+    
+    currentConfig=data;
+    applyConfig();
+    el.loading.style.display='none';
+    el.overlay.style.display='block';
+    connectWs();
+    startConfigPolling();
+  }catch(e){
+    showError('❌ Erreur chargement config: '+e.message);
+  }
+}
+
+function applyConfig(){
+  if(!currentConfig)return;
+  
+  el.blueTeamName.textContent=currentConfig.blue_team_name||'TEAM BLUE';
+  el.orangeTeamName.textContent=currentConfig.orange_team_name||'TEAM ORANGE';
+  el.eventName.textContent=currentConfig.event_name||'EVENT';
+  
+  document.querySelector('.blue-team .team-name').style.color=currentConfig.blue_color||'#5DADE2';
+  document.querySelector('.orange-team .team-name').style.color=currentConfig.orange_color||'#F39C12';
+  
+  document.querySelectorAll('.player-card.blue').forEach(c=>c.style.borderLeftColor=currentConfig.blue_color||'#5DADE2');
+  document.querySelectorAll('.player-card.orange').forEach(c=>c.style.borderLeftColor=currentConfig.orange_color||'#F39C12');
+  
+  updateSeriesDots();
+}
+
+function updateSeriesDots(){
+  if(!currentConfig)return;
+  const n=Math.ceil((currentConfig.best_of||5)/2);
+  const bw=currentConfig.blue_wins||0;
+  const ow=currentConfig.orange_wins||0;
+  const bc=currentConfig.blue_color||'#5DADE2';
+  const oc=currentConfig.orange_color||'#F39C12';
+  
+  el.blueSeriesDots.innerHTML='';
+  el.orangeSeriesDots.innerHTML='';
+  
+  for(let i=0;i<n;i++){
+    const bd=document.createElement('div');
+    bd.className='series-dot';
+    if(i<bw)bd.style.background=bc;
+    el.blueSeriesDots.appendChild(bd);
+    
+    const od=document.createElement('div');
+    od.className='series-dot';
+    if(i<ow)od.style.background=oc;
+    el.orangeSeriesDots.appendChild(od);
+  }
+}
+
+function startConfigPolling(){
+  configUpdateInterval=setInterval(async()=>{
+    const eventId=getEventId();
+    if(!eventId)return;
+    
+    try{
+      const{data}=await supabase
+        .from('event_configs')
+        .select('*')
+        .eq('event_id',eventId)
+        .single();
+      
+      if(data&&JSON.stringify(data)!==JSON.stringify(currentConfig)){
+        currentConfig=data;
+        applyConfig();
+      }
+    }catch(e){}
+  },2000);
+}
+
+function connectWs(){
+  if(!currentConfig||!currentConfig.ws_url)return;
+  if(ws)ws.close();
+  
+  el.statusText.innerHTML='<span class="status-warning">⚠️ Connexion SOS...</span>';
+  
+  try{
+    ws=new WebSocket(currentConfig.ws_url);
+    ws.onopen=()=>el.statusText.innerHTML='<span class="status-connected">✅ Connecté à SOS</span>';
+    ws.onclose=()=>{
+      el.statusText.innerHTML='<span class="status-error">❌ SOS déconnecté - Reconnexion...</span>';
+      schedReconnect();
+    };
+    ws.onerror=()=>el.statusText.innerHTML='<span class="status-error">❌ Erreur SOS</span>';
+    ws.onmessage=e=>{
+      try{
+        const msg=JSON.parse(e.data);
+        if(msg.event==='game:update_state'||msg.type==='game:update_state')updateGameState(msg.data||msg);
+      }catch(ex){}
+    };
+  }catch(e){
+    el.statusText.innerHTML='<span class="status-error">❌ Impossible de se connecter</span>';
+    schedReconnect();
+  }
+}
+
+function schedReconnect(){
+  if(reconnectTimer)return;
+  reconnectTimer=setTimeout(()=>{
+    reconnectTimer=null;
+    connectWs();
+  },2000);
+}
+
+function updateGameState(d){
+  const game=d.game||d;
+  const teams=d.teams||game.teams||{};
+  const players=d.players||game.players||{};
+  
+  const bt=teams[0]||teams['0']||{};
+  const ot=teams[1]||teams['1']||{};
+  
+  el.blueScore.textContent=bt.score||0;
+  el.orangeScore.textContent=ot.score||0;
+  
+  let ts=game.time_seconds??game.timeSeconds??game.time??300;
+  const isOT=ts<0;
+  el.gameTime.textContent=fmtTime(ts);
+  el.gameTime.classList.toggle('overtime',isOT);
+  
+  updatePlayers(players);
+}
+
+function fmtTime(s){
+  if(!isFinite(s))return'5:00';
+  const isOT=s<0;
+  const a=Math.abs(Math.floor(s));
+  const m=Math.floor(a/60);
+  const sec=String(a%60).padStart(2,'0');
+  return isOT?`+${m}:${sec}`:`${m}:${sec}`;
+}
+
+function updatePlayers(pd){
+  const pa=[];
+  if(Array.isArray(pd)){
+    pa.push(...pd);
+  }else if(pd&&typeof pd==='object'){
+    for(const[k,v]of Object.entries(pd)){
+      if(v&&typeof v==='object')pa.push({name:v.name||k,...v});
+    }
+  }
+  
+  const bp=[],op=[];
+  pa.forEach(pl=>{
+    const t=pl.team_num??pl.team??pl.teamIndex??pl.team_index;
+    if(t==='blue'||t===0||t==='0')bp.push(pl);
+    else if(t==='orange'||t===1||t==='1')op.push(pl);
+  });
+  
+  renderRoster(el.blueRoster,bp,'blue');
+  renderRoster(el.orangeRoster,op,'orange');
+}
+
+function renderRoster(c,players,tc){
+  c.innerHTML='';
+  players.forEach(pl=>{
+    const card=document.createElement('div');
+    card.className=`player-card ${tc}`;
+    if(currentConfig){
+      card.style.borderLeftColor=tc==='blue'?currentConfig.blue_color:currentConfig.orange_color;
+    }
+    
+    const name=document.createElement('div');
+    name.className='player-name';
+    name.textContent=pl.name||'Player';
+    
+    const stats=document.createElement('div');
+    stats.className='player-stats';
+    const g=pl.goals||0,a=pl.assists||0,s=pl.saves||0,sh=pl.shots||0;
+    stats.innerHTML=`<div class="stat-item"><span class="stat-label">G</span><span class="stat-value">${g}</span></div><div class="stat-item"><span class="stat-label">A</span><span class="stat-value">${a}</span></div><div class="stat-item"><span class="stat-label">S</span><span class="stat-value">${s}</span></div><div class="stat-item"><span class="stat-label">Sh</span><span class="stat-value">${sh}</span></div>`;
+    
+    const bc=document.createElement('div');
+    bc.className='boost-container';
+    const b=normBoost(pl.boost??pl.boost_amount??pl.boostAmount??pl.boostPercent);
+    bc.innerHTML=`<div class="boost-bar"><div class="boost-fill" style="width:${b}%"></div><div class="boost-text">${b}</div></div>`;
+    
+    card.appendChild(name);
+    card.appendChild(stats);
+    card.appendChild(bc);
+    c.appendChild(card);
+  });
+}
+
+function normBoost(v){
+  if(v==null)return 0;
+  const n=Number(v);
+  if(!isFinite(n))return 0;
+  return n<=1?Math.round(n*100):Math.round(n);
+}
+
+function showError(msg){
+  el.loading.innerHTML=`<h1 style="color:#E74C3C">${msg}</h1>`;
+}
+
+loadConfig();
+</script>
+</body>
+</html>
