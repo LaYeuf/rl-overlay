@@ -71,9 +71,10 @@ body{width:1920px;height:1080px;overflow:hidden;background:transparent;font-fami
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-const SUPABASE_URL='https://vxwahcquiueympgpciqo.supabase.co';
-const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ4d2FoY3F1aXVleW1wZ3BjaXFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMTQ0MTIsImV4cCI6MjA4NDU5MDQxMn0.ussT6yt_Qcc6Ft0a4wHNR_VFnHspg7EpLiD3SmkWv80';
-const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const SUPABASE_URL='https://vxwahcqu1ueympgpcjqo.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ4d2FoY3F1MXVleW1wZ3BjanFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc1NTE4OTEsImV4cCI6MjA1MzEyNzg5MX0.sb_publishable_AFHl9Pmb0QZjsEaPG6YEnQ_HBWSwZ88';
+
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 
 let ws=null,reconnectTimer=null,currentConfig=null,configUpdateInterval=null;
 const el={
@@ -100,23 +101,17 @@ function getEventId(){
 async function loadConfig(){
   const eventId=getEventId();
   if(!eventId){
-    showError('❌ Aucun ID d\'événement dans l\'URL. Contactez l\'admin.');
+    showError('❌ Aucun ID d\'événement dans l\'URL');
     return;
   }
   
   try{
-    const{data,error}=await supabase
-      .from('event_configs')
-      .select('*')
-      .eq('event_id',eventId)
-      .single();
-    
+    const{data,error}=await sb.from('event_configs').select('*').eq('event_id',eventId).single();
     if(error)throw error;
     if(!data){
-      showError('❌ Événement introuvable. Vérifiez l\'URL.');
+      showError('❌ Événement introuvable');
       return;
     }
-    
     currentConfig=data;
     applyConfig();
     el.loading.style.display='none';
@@ -124,23 +119,19 @@ async function loadConfig(){
     connectWs();
     startConfigPolling();
   }catch(e){
-    showError('❌ Erreur chargement config: '+e.message);
+    showError('❌ Erreur: '+e.message);
   }
 }
 
 function applyConfig(){
   if(!currentConfig)return;
-  
   el.blueTeamName.textContent=currentConfig.blue_team_name||'TEAM BLUE';
   el.orangeTeamName.textContent=currentConfig.orange_team_name||'TEAM ORANGE';
   el.eventName.textContent=currentConfig.event_name||'EVENT';
-  
   document.querySelector('.blue-team .team-name').style.color=currentConfig.blue_color||'#5DADE2';
   document.querySelector('.orange-team .team-name').style.color=currentConfig.orange_color||'#F39C12';
-  
   document.querySelectorAll('.player-card.blue').forEach(c=>c.style.borderLeftColor=currentConfig.blue_color||'#5DADE2');
   document.querySelectorAll('.player-card.orange').forEach(c=>c.style.borderLeftColor=currentConfig.orange_color||'#F39C12');
-  
   updateSeriesDots();
 }
 
@@ -151,16 +142,13 @@ function updateSeriesDots(){
   const ow=currentConfig.orange_wins||0;
   const bc=currentConfig.blue_color||'#5DADE2';
   const oc=currentConfig.orange_color||'#F39C12';
-  
   el.blueSeriesDots.innerHTML='';
   el.orangeSeriesDots.innerHTML='';
-  
   for(let i=0;i<n;i++){
     const bd=document.createElement('div');
     bd.className='series-dot';
     if(i<bw)bd.style.background=bc;
     el.blueSeriesDots.appendChild(bd);
-    
     const od=document.createElement('div');
     od.className='series-dot';
     if(i<ow)od.style.background=oc;
@@ -172,14 +160,8 @@ function startConfigPolling(){
   configUpdateInterval=setInterval(async()=>{
     const eventId=getEventId();
     if(!eventId)return;
-    
     try{
-      const{data}=await supabase
-        .from('event_configs')
-        .select('*')
-        .eq('event_id',eventId)
-        .single();
-      
+      const{data}=await sb.from('event_configs').select('*').eq('event_id',eventId).single();
       if(data&&JSON.stringify(data)!==JSON.stringify(currentConfig)){
         currentConfig=data;
         applyConfig();
@@ -191,14 +173,12 @@ function startConfigPolling(){
 function connectWs(){
   if(!currentConfig||!currentConfig.ws_url)return;
   if(ws)ws.close();
-  
   el.statusText.innerHTML='<span class="status-warning">⚠️ Connexion SOS...</span>';
-  
   try{
     ws=new WebSocket(currentConfig.ws_url);
-    ws.onopen=()=>el.statusText.innerHTML='<span class="status-connected">✅ Connecté à SOS</span>';
+    ws.onopen=()=>el.statusText.innerHTML='<span class="status-connected">✅ Connecté</span>';
     ws.onclose=()=>{
-      el.statusText.innerHTML='<span class="status-error">❌ SOS déconnecté - Reconnexion...</span>';
+      el.statusText.innerHTML='<span class="status-error">❌ SOS déco - Reconnexion...</span>';
       schedReconnect();
     };
     ws.onerror=()=>el.statusText.innerHTML='<span class="status-error">❌ Erreur SOS</span>';
@@ -209,7 +189,7 @@ function connectWs(){
       }catch(ex){}
     };
   }catch(e){
-    el.statusText.innerHTML='<span class="status-error">❌ Impossible de se connecter</span>';
+    el.statusText.innerHTML='<span class="status-error">❌ Impossible connexion</span>';
     schedReconnect();
   }
 }
@@ -226,18 +206,14 @@ function updateGameState(d){
   const game=d.game||d;
   const teams=d.teams||game.teams||{};
   const players=d.players||game.players||{};
-  
   const bt=teams[0]||teams['0']||{};
   const ot=teams[1]||teams['1']||{};
-  
   el.blueScore.textContent=bt.score||0;
   el.orangeScore.textContent=ot.score||0;
-  
   let ts=game.time_seconds??game.timeSeconds??game.time??300;
   const isOT=ts<0;
   el.gameTime.textContent=fmtTime(ts);
   el.gameTime.classList.toggle('overtime',isOT);
-  
   updatePlayers(players);
 }
 
@@ -259,14 +235,12 @@ function updatePlayers(pd){
       if(v&&typeof v==='object')pa.push({name:v.name||k,...v});
     }
   }
-  
   const bp=[],op=[];
   pa.forEach(pl=>{
     const t=pl.team_num??pl.team??pl.teamIndex??pl.team_index;
     if(t==='blue'||t===0||t==='0')bp.push(pl);
     else if(t==='orange'||t===1||t==='1')op.push(pl);
   });
-  
   renderRoster(el.blueRoster,bp,'blue');
   renderRoster(el.orangeRoster,op,'orange');
 }
@@ -279,21 +253,17 @@ function renderRoster(c,players,tc){
     if(currentConfig){
       card.style.borderLeftColor=tc==='blue'?currentConfig.blue_color:currentConfig.orange_color;
     }
-    
     const name=document.createElement('div');
     name.className='player-name';
     name.textContent=pl.name||'Player';
-    
     const stats=document.createElement('div');
     stats.className='player-stats';
     const g=pl.goals||0,a=pl.assists||0,s=pl.saves||0,sh=pl.shots||0;
     stats.innerHTML=`<div class="stat-item"><span class="stat-label">G</span><span class="stat-value">${g}</span></div><div class="stat-item"><span class="stat-label">A</span><span class="stat-value">${a}</span></div><div class="stat-item"><span class="stat-label">S</span><span class="stat-value">${s}</span></div><div class="stat-item"><span class="stat-label">Sh</span><span class="stat-value">${sh}</span></div>`;
-    
     const bc=document.createElement('div');
     bc.className='boost-container';
     const b=normBoost(pl.boost??pl.boost_amount??pl.boostAmount??pl.boostPercent);
     bc.innerHTML=`<div class="boost-bar"><div class="boost-fill" style="width:${b}%"></div><div class="boost-text">${b}</div></div>`;
-    
     card.appendChild(name);
     card.appendChild(stats);
     card.appendChild(bc);
