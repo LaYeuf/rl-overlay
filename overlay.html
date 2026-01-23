@@ -9,6 +9,15 @@
 body{width:1920px;height:1080px;overflow:hidden;background:transparent;font-family:'Segoe UI',system-ui,sans-serif;color:#fff;position:relative}
 #topBar{position:absolute;top:30px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:20px;background:rgba(10,10,15,.85);backdrop-filter:blur(15px);padding:15px 25px;border-radius:12px;border:1px solid rgba(255,255,255,.1)}
 .team-section{display:flex;align-items:center;gap:12px;min-width:200px}
+.team-logo{width:36px;height:36px;object-fit:contain;filter:drop-shadow(0 6px 12px rgba(0,0,0,.45))}
+#hudFrame{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:0}
+#topBar,#playerRoster,#statusBar,.demo-badge{z-index:2}
+#sponsorBar{position:absolute;top:95px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:rgba(10,10,15,.78);backdrop-filter:blur(14px);padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);z-index:2;pointer-events:none}
+#sponsorLogo{width:110px;height:28px;object-fit:contain;filter:drop-shadow(0 6px 12px rgba(0,0,0,.45))}
+#sponsorText{font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.85)}
+#sponsorBar img{width:110px;height:28px;object-fit:contain}
+#sponsorBar span{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.85);font-weight:800}
+
 .team-name{font-size:24px;font-weight:900;letter-spacing:1px}
 .team-score{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums}
 .center-info{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:150px}
@@ -37,6 +46,9 @@ body{width:1920px;height:1080px;overflow:hidden;background:transparent;font-fami
 .loading h1{font-size:48px;margin-bottom:20px}
 .spinner{border:4px solid rgba(255,255,255,.1);border-top:4px solid #667eea;border-radius:50%;width:60px;height:60px;animation:spin 1s linear infinite;margin:0 auto}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+.demo-badge{position:absolute;top:20px;right:20px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);padding:8px 12px;border-radius:12px;font-weight:900;letter-spacing:.18em;color:#fff}
+
 </style>
 </head>
 <body>
@@ -45,9 +57,14 @@ body{width:1920px;height:1080px;overflow:hidden;background:transparent;font-fami
 <div class="spinner"></div>
 </div>
 <div id="overlay" style="display:none">
+<div id="demoBadge" class="demo-badge" style="display:none">DEMO</div>
+<img id="hudFrame" alt="" style="display:none">
+<div id="sponsorBar" style="display:none"><img id="sponsorLogo" alt="" style="display:none"><span id="sponsorText"></span></div>
+
 <div id="topBar">
 <div class="team-section blue-team">
 <div class="series-dots" id="blueSeriesDots"></div>
+<img id="blueLogo" class="team-logo" alt="" style="display:none">
 <span class="team-name" id="blueTeamName">TEAM BLUE</span>
 <span class="team-score" id="blueScore">0</span>
 </div>
@@ -58,6 +75,7 @@ body{width:1920px;height:1080px;overflow:hidden;background:transparent;font-fami
 <div class="team-section orange-team">
 <span class="team-score" id="orangeScore">0</span>
 <span class="team-name" id="orangeTeamName">TEAM ORANGE</span>
+<img id="orangeLogo" class="team-logo" alt="" style="display:none">
 <div class="series-dots" id="orangeSeriesDots"></div>
 </div>
 </div>
@@ -73,6 +91,7 @@ body{width:1920px;height:1080px;overflow:hidden;background:transparent;font-fami
 <script>
 const SUPABASE_URL='https://vxwahcquiueympgpciqo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ4d2FoY3F1aXVleW1wZ3BjaXFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMTQ0MTIsImV4cCI6MjA4NDU5MDQxMn0.ussT6yt_Qcc6Ft0a4wHNR_VFnHspg7EpLiD3SmkWv80';
+const DEMO_MODE=(()=>{const p=new URLSearchParams(window.location.search);return p.has('demo')||p.get('demo')==='1';})();
 
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 
@@ -80,6 +99,7 @@ let ws=null,reconnectTimer=null,currentConfig=null,configUpdateInterval=null;
 const el={
   loading:document.getElementById('loading'),
   overlay:document.getElementById('overlay'),
+  demoBadge:document.getElementById('demoBadge'),
   blueScore:document.getElementById('blueScore'),
   orangeScore:document.getElementById('orangeScore'),
   gameTime:document.getElementById('gameTime'),
@@ -90,7 +110,13 @@ const el={
   orangeRoster:document.getElementById('orangeRoster'),
   statusText:document.getElementById('statusText'),
   blueSeriesDots:document.getElementById('blueSeriesDots'),
-  orangeSeriesDots:document.getElementById('orangeSeriesDots')
+  orangeSeriesDots:document.getElementById('orangeSeriesDots'),
+  blueLogo:document.getElementById('blueLogo'),
+  orangeLogo:document.getElementById('orangeLogo'),
+  hudFrame:document.getElementById('hudFrame'),
+  sponsorBar:document.getElementById('sponsorBar'),
+  sponsorLogo:document.getElementById('sponsorLogo'),
+  sponsorText:document.getElementById('sponsorText')
 };
 
 function getEventId(){
@@ -116,8 +142,12 @@ async function loadConfig(){
     applyConfig();
     el.loading.style.display='none';
     el.overlay.style.display='block';
-    connectWs();
-    startConfigPolling();
+    startConfigSync();
+    if(DEMO_MODE){
+      startDemo();
+    }else{
+      connectWs();
+    }
   }catch(e){
     showError('❌ Erreur: '+e.message);
   }
@@ -132,6 +162,29 @@ function applyConfig(){
   document.querySelector('.orange-team .team-name').style.color=currentConfig.orange_color||'#F39C12';
   document.querySelectorAll('.player-card.blue').forEach(c=>c.style.borderLeftColor=currentConfig.blue_color||'#5DADE2');
   document.querySelectorAll('.player-card.orange').forEach(c=>c.style.borderLeftColor=currentConfig.orange_color||'#F39C12');
+  // Team logos
+  const bl=(currentConfig.blue_logo_url||'').trim();
+  if(bl){ el.blueLogo.src=bl; el.blueLogo.style.display='block'; } else { el.blueLogo.style.display='none'; el.blueLogo.removeAttribute('src'); }
+  const ol=(currentConfig.orange_logo_url||'').trim();
+  if(ol){ el.orangeLogo.src=ol; el.orangeLogo.style.display='block'; } else { el.orangeLogo.style.display='none'; el.orangeLogo.removeAttribute('src'); }
+
+  // HUD frame (PNG export from Photoshop)
+  const hf=(currentConfig.hud_frame_url||'').trim();
+  if(hf){ el.hudFrame.src=hf; el.hudFrame.style.display='block'; } else { el.hudFrame.style.display='none'; el.hudFrame.removeAttribute('src'); }
+
+  // Sponsor bar (hidden if empty)
+  const st=(currentConfig.sponsor_text||'').trim();
+  const sl=(currentConfig.sponsor_logo_url||'').trim();
+  if(st || sl){
+    el.sponsorBar.style.display='flex';
+    if(sl){ el.sponsorLogo.src=sl; el.sponsorLogo.style.display='block'; } else { el.sponsorLogo.style.display='none'; el.sponsorLogo.removeAttribute('src'); }
+    el.sponsorText.textContent=st||'';
+  }else{
+    el.sponsorBar.style.display='none';
+    el.sponsorLogo.style.display='none';
+    el.sponsorText.textContent='';
+  }
+
   updateSeriesDots();
 }
 
@@ -157,6 +210,7 @@ function updateSeriesDots(){
 }
 
 function startConfigPolling(){
+  // Fallback simple polling (2s)
   configUpdateInterval=setInterval(async()=>{
     const eventId=getEventId();
     if(!eventId)return;
@@ -168,6 +222,40 @@ function startConfigPolling(){
       }
     }catch(e){}
   },2000);
+}
+
+let realtimeChan=null;
+function startConfigSync(){
+  const eventId=getEventId();
+  if(!eventId)return;
+
+  // Start polling immediately as a fallback
+  startConfigPolling();
+
+  // Try Realtime (stops polling once subscribed)
+  try{
+    if(!sb.channel)return;
+    realtimeChan=sb.channel('event:'+eventId)
+      .on('postgres_changes',
+          {event:'UPDATE',schema:'public',table:'event_configs',filter:`event_id=eq.${eventId}`},
+          async(payload)=>{
+            // Safer: refetch the whole row (UPDATE payload can be partial depending on replication settings)
+            try{
+              const{data}=await sb.from('event_configs').select('*').eq('event_id',eventId).single();
+              if(data){
+                currentConfig=data;
+                applyConfig();
+              }
+            }catch(e){}
+          })
+      .subscribe((status)=>{
+        if(status==='SUBSCRIBED'){
+          if(configUpdateInterval){clearInterval(configUpdateInterval);configUpdateInterval=null;}
+        }
+      });
+  }catch(e){
+    // Keep polling
+  }
 }
 
 function connectWs(){
@@ -216,6 +304,58 @@ function updateGameState(d){
   el.gameTime.classList.toggle('overtime',isOT);
   updatePlayers(players);
 }
+
+let demoTimer=null;
+function startDemo(){
+  if(demoTimer)return;
+  el.demoBadge.style.display='block';
+  el.statusText.innerHTML='<span class="status-warning">🧪 Mode démo (sans SOS)</span>';
+
+  // Minimal fake state compatible with updateGameState()
+  const players=[
+    {name:'Blue 1',team_num:0,goals:0,assists:0,saves:0,shots:0,boost:100},
+    {name:'Blue 2',team_num:0,goals:0,assists:0,saves:0,shots:0,boost:100},
+    {name:'Orange 1',team_num:1,goals:0,assists:0,saves:0,shots:0,boost:100},
+    {name:'Orange 2',team_num:1,goals:0,assists:0,saves:0,shots:0,boost:100},
+  ];
+
+  const state={
+    game:{time_seconds:300,teams:{0:{score:0},1:{score:0}},players:players},
+    teams:{0:{score:0},1:{score:0}},
+    players:players
+  };
+
+  const tick=()=>{
+    // countdown
+    state.game.time_seconds-=1;
+    if(state.game.time_seconds<-30) state.game.time_seconds=300;
+
+    // random boost + occasional stats changes
+    players.forEach(p=>{
+      p.boost=Math.max(0,Math.min(100, (p.boost??50) + (Math.random()*30-15)));
+      if(Math.random()<0.08) p.shots=(p.shots||0)+1;
+      if(Math.random()<0.03) p.saves=(p.saves||0)+1;
+    });
+
+    // rare goal
+    if(Math.random()<0.03){
+      const blueScored=Math.random()<0.5;
+      const teamPlayers=players.filter(p=>p.team_num===(blueScored?0:1));
+      const scorer=teamPlayers[Math.floor(Math.random()*teamPlayers.length)];
+      scorer.goals=(scorer.goals||0)+1;
+      if(blueScored) state.teams[0].score=(state.teams[0].score||0)+1;
+      else state.teams[1].score=(state.teams[1].score||0)+1;
+      state.game.teams=state.teams;
+    }
+
+    updateGameState(state);
+  };
+
+  // initial render + interval
+  tick();
+  demoTimer=setInterval(tick,1000);
+}
+
 
 function fmtTime(s){
   if(!isFinite(s))return'5:00';
