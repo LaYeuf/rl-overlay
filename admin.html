@@ -30,13 +30,14 @@
   .ok{color:#78ff9a}
   .bad{color:#ff7a7a}
   /* Modal */
-  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:22px;z-index:50}
-  .modal .box{width:min(980px,100%);background:#101020;border:1px solid rgba(255,255,255,.12);border-radius:18px;overflow:hidden}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:22px;z-index:50;overflow:auto}
+  .modal .box{width:min(980px,100%);background:#101020;border:1px solid rgba(255,255,255,.12);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 44px)}
   .modal header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.10)}
-  .modal main{padding:16px}
+  .modal main{padding:16px;overflow:auto;min-height:0}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   @media (max-width:900px){.grid2{grid-template-columns:1fr}}
   .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+  .modal .actions{position:sticky;bottom:0;background:rgba(16,16,32,.92);padding:12px 0 4px;border-top:1px solid rgba(255,255,255,.10);backdrop-filter:blur(6px)}
   /* Layout editor */
   .editorWrap{display:grid;grid-template-columns:1fr 320px;gap:12px}
   @media (max-width:1000px){.editorWrap{grid-template-columns:1fr}}
@@ -405,8 +406,13 @@ async function saveEvent() {
     layout_locked: $('f_layout_locked').checked,
   };
 
-  const layoutObj = safeJSON($('f_layout_json').value);
-  payload.layout_json = layoutObj ? layoutObj : ($('f_layout_json').value.trim() ? $('f_layout_json').value.trim() : null);
+  const layoutStr = $('f_layout_json').value.trim();
+  const layoutObj = layoutStr ? safeJSON(layoutStr) : null;
+  if(layoutStr && !layoutObj) {
+    $('modalMsg').textContent = 'Erreur: Layout JSON invalide';
+    return;
+  }
+  payload.layout_json = layoutObj;
 
   let res;
   if(editing) {
@@ -421,6 +427,8 @@ async function saveEvent() {
     res = await sb.from('event_configs').update(payload).eq('event_id', editing.event_id);
   } else {
     payload.event_id = crypto.randomUUID();
+    // required by RLS policy
+    if(session?.user?.id) payload.created_by = session.user.id;
     res = await sb.from('event_configs').insert(payload);
   }
 

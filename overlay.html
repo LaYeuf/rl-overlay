@@ -157,7 +157,12 @@ function applyConfig(cfg) {
 
   // Frame + layout
   const frameUrl = cfg.hud_frame_url || '';
-  const layout = cfg.layout_json || null;
+  let layout = cfg.layout_json || null;
+
+  // layout_json peut arriver en string selon la config
+  if(typeof layout === 'string') {
+    try { layout = JSON.parse(layout); } catch(e) { layout = null; }
+  }
 
   if(frameUrl) {
     document.getElementById('hudFrame').src = frameUrl;
